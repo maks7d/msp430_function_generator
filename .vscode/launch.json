@@ -1,0 +1,22 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Compile and Flash MSP430",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "/usr/bin/true",
+      "cwd": "${workspaceFolder}",
+      "MIMode": "lldb",
+      "preLaunchTask": "make flash"
+    },
+    {
+      "name": "C/C++ Runner: Debug Session",
+      "type": "lldb",
+      "request": "launch",
+      "args": [],
+      "cwd": "/Users/macmax/repos/msp430",
+      "program": "/Users/macmax/repos/msp430/build/Debug/outDebug"
+    }
+  ]
+}
