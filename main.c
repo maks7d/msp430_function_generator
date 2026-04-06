@@ -19,15 +19,19 @@ int main(void) {
     P1DIR |= BIT2;  
     P1SEL |= BIT2;  
 
-    // *DÉBUG* : Configurer la LED rouge (P1.0) en sortie pour voir si l'interruption marche
-    P1DIR |= BIT0;
-    P1OUT &= ~BIT0; // Éteindre la LED au démarrage
-
     // 4. Configuration des broches pour l'encodeur rotatif (P1.3 = CLK, P1.4 = DT)
     P1DIR &= ~(BIT3 | BIT4 | BIT5); // Les définir comme entrées
     P1REN |= (BIT3 | BIT4 | BIT5);  // Activer les résistances internes
     P1OUT |= (BIT3 | BIT4 | BIT5);  // Configurer en Pull-Up (souvent nécessaire pour les encodeurs)
     
+    // Configuration du bouton poussoir 
+    P1DIR &= ~BIT5; // P1.5 en entrée
+    P1REN |= BIT5;  // Activer la résistance interne
+    P1OUT |= BIT5;  // Configurer en Pull-Up
+
+    // *DÉBUG* : Configurer la LED rouge (P1.0) en sortie pour voir si l'interruption marche
+    P1DIR |= BIT0;
+    P1OUT &= ~BIT0; // Éteindre la LED au démarrage
 
     // Configuration des interruptions pour lire l'encodeur (sur CLK = P1.3)
     P1IE |= BIT3;            // Activer l'interruption sur P1.3
@@ -36,6 +40,11 @@ int main(void) {
 
     P1IE |= BIT5;            // Activer l'interruption sur P1.5 (switch du rotary encoder)
     P1IES |= BIT5;           // Déclencher sur le front descendant 
+    P1IFG &= ~BIT5;          // Effacer le drapeau d'interruption au cas où
+
+    //Configuration interruption pour le bouton poussoir
+    P1IE |= BIT5;            // Activer l'interruption sur P1.5
+    P1IES |= BIT5;           // Déclencher sur le front descendant (quand le bouton est pressé)
     P1IFG &= ~BIT5;          // Effacer le drapeau d'interruption au cas où
 
     // 5. Configuration de la base de temps du Timer A0
@@ -123,4 +132,8 @@ void Port_1(void) {
             current_mode = (current_mode + 1) % 2; // Alterne entre les modes 0 et 1
             P1IFG &= ~BIT5; // Efface le drapeau d'interruption
         }  
+        else if (P1FG & BIT0){
+            // Si c'est le bouton poussoir qui a déclenché l'interruption
+            
+        }
     }
