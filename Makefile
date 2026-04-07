@@ -5,8 +5,8 @@
 # pour que le repo soit portable. 
 # Vous pouvez aussi surcharger ces variables à la volée :
 # ex: make GCC_DIR=/autre/chemin/gcc flash
-GCC_DIR     ?= ../../Downloads/msp430-gcc-9.3.1.11_macos
-SUPPORT_DIR ?= ../../Downloads/msp430-gcc-support-files/include
+GCC_DIR     ?= ../../ti/msp430-gcc-9.3.1.11_linux64
+SUPPORT_DIR ?= ../../ti/msp430-gcc-support-files/include
 FLASHER_DIR ?= ../../ti/MSPFlasher_1.3.20
 
 MCU = msp430g2553
@@ -30,7 +30,7 @@ $(TARGET).hex: $(TARGET).elf
 
 flash: $(TARGET).hex
 	# L'outil MSP430Flasher de TI veut un format text (HEX ou TI-TXT), pas ELF
-	$(FLASHER) -w $(TARGET).hex -v -z [VCC]
+	LD_LIBRARY_PATH=$(FLASHER_DIR) $(FLASHER) -w $(TARGET).hex -v -z [VCC]
 
 clean:
 	rm -f *.elf *.hex *.o

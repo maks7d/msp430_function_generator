@@ -6,8 +6,12 @@
       "type": "cppdbg",
       "request": "launch",
       "program": "/usr/bin/true",
+      "args": [],
+      "stopAtEntry": false,
       "cwd": "${workspaceFolder}",
-      "MIMode": "lldb",
+      "environment": [],
+      "externalConsole": false,
+      "MIMode": "gdb",
       "preLaunchTask": "make flash"
     },
     {
