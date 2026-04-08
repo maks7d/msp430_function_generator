@@ -7,6 +7,16 @@ volatile unsigned int current_duty_cycle = 50; // En pourcentage, ex: 50 pour 50
 volatile unsigned int current_rotary_mode = 0; // 0 = frequence, 1 = rapport cyclique
 volatile unsigned int current_function_mode = 0; // 0 = carré, 1 = sinus, 2 = triangle
 
+// --- LUT (Look-Up Table) pour le signal Sinusoïdal ---
+// 32 échantillons représentant un cycle complet de sinus (en pourcentage de 0 à 100%)
+const unsigned int sine_table[32] = {
+    50, 60, 69, 78, 85, 92, 96, 99, 
+    100, 99, 96, 92, 85, 78, 69, 60, 
+    50, 40, 31, 22, 15, 8, 4, 1, 
+    0, 1, 4, 8, 15, 22, 31, 40
+};
+volatile unsigned int wave_index = 0; // Position actuelle dans la table
+
 void setup(void) {
 
     // 1. Arrête le Watchdog Timer
@@ -82,19 +92,39 @@ int update_frequency(){
         return current_period;
 };
 
+int update_duty_cycle(){
+
+    // On lit l'état de la broche DT (P1.4) pour connaître le sens
+    if (P1IN & BIT4) {
+        // Sens Horaire : On augmente le rapport cyclique de 5%
+        if (current_duty_cycle < 95) { // Limite 95% max pour ne pas avoir un signal bloqué à 1
+            current_duty_cycle += 5;
+        }
+    } else {
+        // Sens Anti-horaire : On diminue le rapport cyclique de 5%
+        if (current_duty_cycle > 5) { // Limite 5% min pour ne pas avoir un signal bloqué à 0
+            current_duty_cycle -= 5;
+        }
+    }
+    return current_duty_cycle;
+}
+
 int main(void) {
     
     setup(); // Appelle la fonction de configuration
 
-    // 6. Définition initiale de la fréquence et rapport cyclique (100 Hz, 50%)
+    // Définition initiale de la fréquence et rapport cyclique (100 Hz, 50%)
     TA0CCR0 = current_period - 1; 
     TA0CCR1 = ((unsigned long)current_period * current_duty_cycle) / 100; 
     TA0CCTL1 = OUTMOD_7; 
+    
+    // Activer l'interruption locale du Timer A0 (sur CCR0) pour mettre à jour les signaux dynamiques
+    TA0CCTL0 = CCIE;
 
-    // 7. Activer les interruptions globales
+    // Activer les interruptions globales
     __enable_interrupt();
 
-    // 8. Économie d'énergie maximale
+    // Économie d'énergie maximale
     // On met le CPU en sommeil profond (LPM0). 
     // Il se réveillera automatiquement juste le temps de traiter l'encodeur rotatif.
     __bis_SR_register(LPM0_bits); 
@@ -116,65 +146,80 @@ void Port_1(void) {
     
     // On vérifie que c'est bien P1.3 (CLK) qui a déclenché l'interruption
     if (P1IFG & BIT3) {
-        if (current_rotary_mode == 0) {
-            current_period = update_frequency();
-            // Met à jour la fréquence du signal en temps réel  
-            TA0CCR0 = current_period - 1;
-            TA0CCR1 = ((unsigned long)current_period * current_duty_cycle) / 100; // Maintient le rapport cyclique 
+        switch(current_rotary_mode) {
+            case 0:
+                current_period = update_frequency();
+                // Met à jour la fréquence du signal en temps réel  
+                TA0CCR0 = current_period - 1;
+                TA0CCR1 = ((unsigned long)current_period * current_duty_cycle) / 100; // Maintient le rapport cyclique 
+                break;
 
-            // Obligatoire : On efface le drapeau pour dire qu'on a traité l'interruption
-            P1IFG &= ~BIT3; 
+            case 1:
+                current_duty_cycle = update_duty_cycle();
+                // Met à jour le rapport cyclique en temps réel  
+                TA0CCR1 = ((unsigned long)current_period * current_duty_cycle) / 100; 
+                break; 
         }
-        else if (current_rotary_mode == 1) {
-            // On lit l'état de la broche DT (P1.4) pour connaître le sens
-            if (P1IN & BIT4) {
-                // Sens Horaire : On augmente le rapport cyclique de 5%
-                if (current_duty_cycle < 95) { // Limite 95% max pour ne pas avoir un signal bloqué à 1
-                    current_duty_cycle += 5;
-                }
-            } else {
-                // Sens Anti-horaire : On diminue le rapport cyclique de 5%
-                if (current_duty_cycle > 5) { // Limite 5% min pour ne pas avoir un signal bloqué à 0
-                    current_duty_cycle -= 5;
-                }
-            }
-
-            // Met à jour le rapport cyclique en temps réel  
-            TA0CCR1 = ((unsigned long)current_period * current_duty_cycle) / 100; 
-
-            // Obligatoire : On efface le drapeau pour dire qu'on a traité l'interruption
-            P1IFG &= ~BIT3; 
-        }
+        
+        // INDISPENSABLE : Effacer le drapeau d'interruption de P1.3 !
+        // Sans ça, le microcontrôleur reste bloqué dans une boucle infinie.
+        P1IFG &= ~BIT3; 
     }
         
     else if (P1IFG & BIT5) {
-            // Si c'est le switch du rotary encoder qui a déclenché l'interruption
-            current_rotary_mode = (current_rotary_mode + 1) % 2; // Alterne entre les modes 0 et 1
-            P1IFG &= ~BIT5; // Efface le drapeau d'interruption
+        // Si c'est le switch du rotary encoder qui a déclenché l'interruption
+        current_rotary_mode = (current_rotary_mode + 1) % 2; // Alterne entre les modes 0 et 1
+        P1IFG &= ~BIT5; // Efface le drapeau d'interruption
     }  
     else if (P1IFG & BIT0){
-            // Si c'est le bouton poussoir qui a déclenché l'interruption
-            current_function_mode = (current_function_mode + 1) % 3; // Alterne entre les modes 0, 1 et 2
-            switch(current_function_mode){
-                case 0:
-                    P2OUT &= ~BIT3;
-                    P2OUT &= ~BIT4;
-                    P2OUT |= BIT5;
-                    break;
+        // Si c'est le bouton poussoir qui a déclenché l'interruption
+        current_function_mode = (current_function_mode + 1) % 3; // Alterne entre les modes 0, 1 et 2
+        switch(current_function_mode){
+            case 0:
+                P2OUT &= ~BIT3;
+                P2OUT &= ~BIT4;
+                P2OUT |= BIT5;
+                current_function_mode = 0;
+                // Retour au rapport cyclique fixe pour le mode carré
+                TA0CCR1 = ((unsigned long)current_period * current_duty_cycle) / 100;
+                break;
 
-                case 1:
-                    P2OUT |= BIT3;
-                    P2OUT &= ~BIT4;
-                    P2OUT &= ~BIT5;
-                    break;
-                
-                case 2:
-                    P2OUT &= ~BIT3;
-                    P2OUT |= BIT4;
-                    P2OUT &= ~BIT5;
-                    break;                 
-            }
+            case 1:
+                P2OUT |= BIT3;
+                P2OUT &= ~BIT4;
+                P2OUT &= ~BIT5;
+                current_function_mode = 1;
+                wave_index = 0; // Réinitialise le sinus à 0 quand on bascule de mode
+                break;
+            
+            case 2:
+                P2OUT &= ~BIT3;
+                P2OUT |= BIT4;
+                P2OUT &= ~BIT5;
+                current_function_mode = 2;
+                break;                 
+        }
             
         P1IFG &= ~BIT0; // Efface le drapeau d'interruption
     }
+}
+
+// ---------------------------------------------------------
+// ROUTINE D'INTERRUPTION DU TIMER A0
+// Modifie le rapport cyclique à la volée pour simuler
+// un signal analogique complexe (Sinus) via SPWM
+// ---------------------------------------------------------
+#if defined(__GNUC__)
+__attribute__ ((interrupt(TIMER0_A0_VECTOR)))
+#else
+#pragma vector=TIMER0_A0_VECTOR
+__interrupt
+#endif
+void Timer_A0_ISR(void) {
+    if (current_function_mode == 1) { // Mode Sinus
+        // On met à jour le rapport cyclique avec la table des sinus
+        TA0CCR1 = ((unsigned long)current_period * sine_table[wave_index]) / 100;
+        wave_index = (wave_index + 1) % 32; // Boucle de 0 à 31 (taille de la table)
     }
+    // Note : En mode Carré (0), on ne fait rien dans l'interruption (Duty Cycle fixe) !
+}
